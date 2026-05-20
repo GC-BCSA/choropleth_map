@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChoroplethMap — Series Plotter</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='40' r='30' fill='%2321409A'/><ellipse cx='50' cy='95' rx='8' ry='5' fill='%231A204C' opacity='0.3'/><line x1='50' y1='70' x2='50' y2='90' stroke='%2321409A' stroke-width='6' stroke-linecap='round'/></svg>">
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Code+Pro:wght@400;600&display=swap');
+
+  :root {
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --surface2: #eaecf0;
+    --border: #c8ccd4;
+    --text: #000000;
+    --text-head1: #1A204C;
+    --text-head2: #21409A;
+    --text-dim: #4b5563;
+    --accent: #21409A;
+    --accent-hover: #1A204C;
+    --danger: #c0392b;
+    --success: #1a7a4a;
+    --header-bg: #1A204C;
+    --header-text: #ffffff;
+    --header-text-dim: rgba(255,255,255,0.65);
+    --logo-accent: #ffffff;
+    --font-body: Arial, 'Inter', sans-serif;
+    --font-mono: 'Source Code Pro', 'Courier New', monospace;
+  }
+
+  [data-theme="dark"] {
+    --bg: #0d1020;
+    --surface: #141829;
+    --surface2: #1c2238;
+    --border: #2a3154;
+    --text: #e8eaf0;
+    --text-head1: #a8b4e8;
+    --text-head2: #6b8de0;
+    --text-dim: #8892b0;
+    --accent: #4a72d4;
+    --accent-hover: #6b8de0;
+    --danger: #e05c4a;
+    --success: #2ecc71;
+    --header-bg: #0d1020;
+    --header-text: #e8eaf0;
+    --header-text-dim: rgba(168,180,232,0.65);
+    --logo-accent: #a8b4e8;
+    --font-body: Arial, 'Inter', sans-serif;
+    --font-mono: 'Source Code Pro', 'Courier New', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: background 0.2s, color 0.2s;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--header-bg);
+    flex-shrink: 0;
+    gap: 12px;
+  }
+
+  .logo {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: var(--logo-accent);
+    white-space: nowrap;
+  }
+  .logo span { color: var(--header-text-dim); font-weight: 400; }
+
+  .theme-toggle {
+    width: 32px; height: 32px; border-radius: 5px;
+    border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.1);
+    color: var(--header-text);
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 15px; transition: background 0.15s; flex-shrink: 0;
+  }
+  .theme-toggle:hover { background: rgba(255,255,255,0.2); }
+
+  .style-label {
+    font-size: 10px; color: var(--text-head2); min-width: 42px;
+    font-family: var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase;
+  }
+
+  .header-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+  .btn, .water-label, .view-tab {
+    width: 120px; height: 32px;
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em;
+    border-radius: 5px; white-space: nowrap;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: all 0.15s; box-sizing: border-box;
+  }
+
+  .btn {
+    border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.1);
+    color: #ffffff; padding: 0;
+  }
+  .btn:hover { background: rgba(255,255,255,0.25); border-color: rgba(255,255,255,0.5); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: rgba(255,255,255,0.25); border-color: rgba(255,255,255,0.5); }
+  .btn.export { border-color: #34d399; color: #34d399; background: rgba(52,211,153,0.1); }
+  .btn.export:hover { background: #34d399; color: #000; border-color: #34d399; }
+
+  .sidebar .btn {
+    border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+  }
+  .sidebar .btn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .sidebar .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .sidebar .btn.primary:hover { background: var(--accent-hover); }
+  .sidebar .btn.danger { border-color: var(--danger); color: var(--danger); background: transparent; }
+  .sidebar .btn.danger:hover { background: var(--danger); color: #fff; }
+
+  .water-label {
+    gap: 6px; border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.8);
+    user-select: none; padding: 0;
+  }
+  .water-label input { accent-color: #4f9cf9; cursor: pointer; width: 13px; height: 13px; flex-shrink: 0; }
+  .water-label:hover { background: rgba(255,255,255,0.2); color: #fff; }
+
+  .view-tabs {
+    display: flex; background: rgba(0,0,0,0.2); border-radius: 6px;
+    overflow: hidden; height: 32px; outline: 1px solid rgba(255,255,255,0.25);
+  }
+  .view-tab {
+    width: 120px; height: 32px; border: none; border-radius: 0;
+    background: transparent; color: rgba(255,255,255,0.6);
+  }
+  .view-tab.active { background: var(--accent); color: #fff; }
+  .view-tab:hover:not(.active) { background: rgba(255,255,255,0.15); color: #fff; }
+
+  .main { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+
+  .sidebar {
+    width: 300px; min-width: 300px;
+    background: var(--surface); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+
+  .series-list {
+    flex: 1; min-height: 0; overflow-y: auto; padding: 10px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .series-list::-webkit-scrollbar { width: 6px; }
+  .series-list::-webkit-scrollbar-track { background: transparent; }
+  .series-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .series-card {
+    background: var(--surface2); border: 1px solid var(--accent); border-radius: 8px; flex-shrink: 0;
+  }
+  .series-header {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px; user-select: none;
+  }
+  .series-dot {
+    width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+    border: 2px solid rgba(255,255,255,0.2);
+  }
+  .series-name-input {
+    flex: 1; background: transparent; border: none;
+    color: var(--text-head1); font-family: var(--font-body);
+    font-size: 13px; font-weight: 600; outline: none; min-width: 0;
+  }
+  .series-count { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+  .series-body { display: flex; padding: 0 10px 10px; flex-direction: column; gap: 8px; }
+
+  .style-row { display: flex; gap: 8px; align-items: center; }
+
+  .color-input-wrap { display: flex; align-items: center; gap: 6px; }
+  input[type="color"] {
+    width: 28px; height: 28px; border: 1px solid var(--border);
+    border-radius: 4px; background: none; cursor: pointer; padding: 2px;
+  }
+  .hex-input {
+    width: 72px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 4px; color: var(--text); font-family: var(--font-mono);
+    font-size: 11px; padding: 4px 6px; outline: none;
+  }
+  .hex-input:focus { border-color: var(--accent); }
+
+  /* ── GRADIENT SWATCH ROW ── */
+  .gradient-preview {
+    height: 18px; border-radius: 4px; border: 1px solid var(--border);
+    flex: 1; min-width: 0;
+  }
+
+  textarea.data-input {
+    width: 100%; min-height: 80px; max-height: 130px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 5px;
+    color: var(--text); font-family: var(--font-mono); font-size: 11px;
+    padding: 6px 8px; resize: vertical; outline: none; line-height: 1.6;
+  }
+  textarea.data-input:focus { border-color: var(--accent); }
+  textarea.data-input::placeholder { color: var(--text-dim); }
+
+  .data-status { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+  .data-status .ok { color: var(--success); }
+  .data-status .err { color: var(--danger); }
+
+  .sidebar-proj {
+    padding: 8px 10px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .sidebar-proj .proj-label {
+    font-size: 10px; color: var(--text-dim); font-family: var(--font-mono);
+    letter-spacing: 0.06em; white-space: nowrap;
+  }
+
+  .sidebar-footer {
+    padding: 10px; border-top: 1px solid var(--border); display: flex; gap: 6px;
+  }
+
+  select.proj-select {
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.04em;
+    height: 28px; padding: 0 24px 0 10px; border-radius: 5px;
+    border: 1px solid var(--border); background: var(--surface2); color: var(--text);
+    cursor: pointer; outline: none; appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%237a7a90'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 8px center;
+    transition: border-color 0.15s;
+  }
+  select.proj-select:hover, select.proj-select:focus { border-color: var(--accent); }
+  select.proj-select option { background: var(--surface2); color: var(--text); }
+
+  .map-area {
+    flex: 1; display: flex; flex-direction: column;
+    background: #1c2733; position: relative; overflow: hidden; min-width: 0;
+  }
+  #map-svg { width: 100%; height: 100%; display: block; cursor: grab; }
+  #map-svg:active { cursor: grabbing; }
+
+  .map-status {
+    position: absolute; bottom: 12px; right: 14px;
+    font-family: var(--font-mono); font-size: 10px;
+    color: rgba(255,255,255,0.35); pointer-events: none;
+  }
+
+  /* ── LEGEND / COLOR SCALE BAR ── */
+  .legend-overlay {
+    position: absolute; bottom: 36px; left: 14px;
+    background: rgba(15,16,32,0.82); border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px; padding: 10px 14px; min-width: 180px; max-width: 260px;
+    pointer-events: none; display: flex; flex-direction: column; gap: 6px; z-index: 50;
+  }
+  .legend-overlay.hidden { display: none; }
+  .legend-title {
+    font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.4); text-transform: uppercase; margin-bottom: 2px;
+    border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px;
+  }
+  .legend-series-block { display: flex; flex-direction: column; gap: 4px; }
+  .legend-series-name { font-family: var(--font-mono); font-size: 10px; color: rgba(255,255,255,0.7); }
+  .legend-bar-wrap { display: flex; align-items: center; gap: 6px; }
+  .legend-bar { height: 10px; flex: 1; border-radius: 3px; }
+  .legend-labels {
+    display: flex; justify-content: space-between;
+    font-family: var(--font-mono); font-size: 9px; color: rgba(255,255,255,0.5);
+  }
+
+  .loading-overlay {
+    position: absolute; inset: 0; background: rgba(15,15,17,0.8);
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 12px; z-index: 100;
+  }
+  .loading-overlay.hidden { display: none; }
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); letter-spacing: 0.08em; }
+
+  .tooltip {
+    position: fixed; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 5px; padding: 6px 10px; font-size: 12px;
+    pointer-events: none; z-index: 200; display: none;
+    font-family: var(--font-mono); white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* small select used inside cards */
+  select.inline-select {
+    font-family: var(--font-mono); font-size: 10px; height: 24px; padding: 0 20px 0 7px;
+    border-radius: 4px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); cursor: pointer; outline: none;
+    appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%237a7a90'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 6px center;
+    flex: 1;
+  }
+  select.inline-select:focus { border-color: var(--accent); }
+
+  .range-row { display:flex; gap:6px; align-items:center; }
+  .range-row input[type=number] {
+    width: 62px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 4px; color: var(--text); font-family: var(--font-mono);
+    font-size: 11px; padding: 3px 6px; outline: none; text-align:center;
+  }
+  .range-row input[type=number]:focus { border-color: var(--accent); }
+  .range-sep { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div class="logo">CHORO<span>MAP</span></div>
+    <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle light/dark mode">◑</button>
+  </div>
+  <div class="header-controls">
+    <div class="view-tabs">
+      <button class="view-tab active" data-view="us" onclick="setView('us')">US 48+AK/HI</button>
+      <button class="view-tab" data-view="lower48" onclick="setView('lower48')">LOWER 48</button>
+      <button class="view-tab" data-view="world" onclick="setView('world')">WORLD</button>
+    </div>
+    <button class="btn primary" onclick="plotAll()">PLOT DATA</button>
+    <label class="water-label"><input type="checkbox" id="waterCheck" checked onchange="setWater(this.checked)"> WATER</label>
+    <label class="water-label"><input type="checkbox" id="legendCheck" checked onchange="toggleLegend(this.checked)"> LEGEND</label>
+    <button class="btn" onclick="resetZoom()">RESET</button>
+    <button class="btn export" onclick="exportPNG()">EXPORT PNG</button>
+  </div>
+</header>
+
+<div class="main">
+  <div class="sidebar">
+    <div class="series-list" id="seriesList"></div>
+    <div class="sidebar-proj" id="projWrap">
+      <span class="proj-label">PROJECTION</span>
+      <select class="proj-select" id="projSelect" onchange="setProjection(this.value)" style="flex:1;width:100%"></select>
+    </div>
+    <div class="sidebar-footer">
+      <button class="btn primary" style="flex:1" onclick="addSeries()">+ ADD LAYER</button>
+      <button class="btn danger" onclick="clearAll()">CLEAR ALL</button>
+    </div>
+  </div>
+
+  <div class="map-area">
+    <svg id="map-svg"></svg>
+    <div class="map-status" id="mapStatus"></div>
+    <div class="legend-overlay" id="legendOverlay"></div>
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="spinner"></div>
+      <div class="loading-text">LOADING GEO DATA…</div>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const SERIES_COLORS_LOW  = ['#f7fbff','#fff5eb','#f7fcf5','#fff5f0','#fcfbfd','#f7fcfd','#fff7fb','#ffffe5','#f7f4f9','#ffffd9'];
+const SERIES_COLORS_HIGH = ['#08306b','#7f2704','#00441b','#67000d','#3f007d','#084081','#49006a','#004529','#40004b','#003333'];
+
+const COLOR_SCHEMES = [
+  { id:'blues',      label:'Blues',        low:'#f7fbff', high:'#08306b' },
+  { id:'oranges',    label:'Oranges',      low:'#fff5eb', high:'#7f2704' },
+  { id:'greens',     label:'Greens',       low:'#f7fcf5', high:'#00441b' },
+  { id:'reds',       label:'Reds',         low:'#fff5f0', high:'#67000d' },
+  { id:'purples',    label:'Purples',      low:'#fcfbfd', high:'#3f007d' },
+  { id:'teal',       label:'Teal',         low:'#f7fcfd', high:'#084081' },
+  { id:'magma',      label:'Magma',        low:'#fcfdbf', high:'#000004' },
+  { id:'viridis',    label:'Viridis',      low:'#fde725', high:'#440154' },
+  { id:'rdylgn',     label:'Red→Green',    low:'#d73027', high:'#1a9850' },
+  { id:'rdbu',       label:'Red→Blue',     low:'#d73027', high:'#4575b4' },
+  { id:'custom',     label:'Custom',       low:'#ffffff', high:'#21409A' },
+];
+
+// Named D3 interpolators for known schemes
+const D3_INTERPOLATORS = {
+  blues:   d3.interpolateBlues,
+  oranges: d3.interpolateOranges,
+  greens:  d3.interpolateGreens,
+  reds:    d3.interpolateReds,
+  purples: d3.interpolatePurples,
+  teal:    d3.interpolateBuGn,
+  magma:   d3.interpolateMagma,
+  viridis: d3.interpolateViridis,
+  rdylgn:  t => d3.interpolateRdYlGn(1 - t),
+  rdbu:    t => d3.interpolateRdBu(1 - t),
+};
+
+const MAX_SERIES = 6;
+const LEVEL_OPTIONS = ['state','county'];
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let state = {
+  view: 'us',
+  projection: 'albersUsa',
+  showWater: true,
+  series: [],
+  seriesCount: 0,
+  geoLoaded: false,
+};
+
+let worldTopo, usTopo;
+let countyFeatures = [], stateFeatures = [];
+// FIPS lookup maps: built from topo after load
+let stateFipsMap  = new Map(); // fips id -> feature
+let countyFipsMap = new Map();
+// State name/abbr -> FIPS
+let stateNameToFips = new Map();
+let stateAbbrToFips = new Map();
+
+// ─── SERIES MANAGEMENT ───────────────────────────────────────────────────────
+function makeSeries() {
+  const idx = state.series.length;
+  const scheme = COLOR_SCHEMES[idx % (COLOR_SCHEMES.length - 1)]; // skip 'custom' initially
+  return {
+    id: ++state.seriesCount,
+    name: `Layer ${state.seriesCount}`,
+    level: 'state',       // 'state' | 'county'
+    scheme: scheme.id,
+    colorLow:  scheme.low,
+    colorHigh: scheme.high,
+    scaleType: 'linear',  // 'linear' | 'quantile' | 'quantize'
+    domainMin: '',        // '' = auto
+    domainMax: '',
+    dataRaw: '',          // raw text input
+    parsed: [],           // [{key, value, fips, ok}]
+    visible: true,
+    opacity: 0.85,
+  };
+}
+
+function addSeries() {
+  if (state.series.length >= MAX_SERIES) { alert(`Maximum ${MAX_SERIES} layers allowed.`); return; }
+  state.series.push(makeSeries());
+  renderSidebar();
+}
+
+function removeSeries(id) {
+  state.series = state.series.filter(s => s.id !== id);
+  renderSidebar();
+  renderChoropleth();
+}
+
+function clearAll() {
+  if (!confirm('Clear all layer data?')) return;
+  state.series = [];
+  renderSidebar();
+  renderChoropleth();
+}
+
+// ─── SIDEBAR ─────────────────────────────────────────────────────────────────
+function renderSidebar() {
+  const el = document.getElementById('seriesList');
+  el.innerHTML = '';
+  state.series.forEach(s => el.appendChild(buildSeriesCard(s)));
+  if (state.series.length === 0) {
+    el.innerHTML = `<div style="color:var(--text-dim);font-size:12px;font-family:var(--font-mono);text-align:center;padding:24px 12px;line-height:1.8;letter-spacing:0.05em;">NO LAYERS YET<br><span style="font-size:10px;opacity:0.5">Click + ADD LAYER to start</span></div>`;
+  }
+}
+
+function gradientCSS(s) {
+  const lo = s.colorLow, hi = s.colorHigh;
+  return `linear-gradient(to right, ${lo}, ${hi})`;
+}
+
+function buildSeriesCard(s) {
+  const div = document.createElement('div');
+  div.className = 'series-card';
+  div.id = `sc-${s.id}`;
+
+  const ok    = s.parsed.filter(r => r.ok).length;
+  const total = s.parsed.length;
+  const statusStr = total > 0
+    ? `<span class="${ok===total?'ok':'err'}">${ok}/${total}</span>`
+    : `<span>${countEntries(s.dataRaw)} entered</span>`;
+
+  const schemeOpts = COLOR_SCHEMES.map(c =>
+    `<option value="${c.id}"${c.id===s.scheme?' selected':''}>${c.label}</option>`
+  ).join('');
+
+  const levelOpts = LEVEL_OPTIONS.map(l =>
+    `<option value="${l}"${l===s.level?' selected':''}>${l.toUpperCase()}</option>`
+  ).join('');
+
+  const scaleOpts = ['linear','quantile','quantize'].map(t =>
+    `<option value="${t}"${t===s.scaleType?' selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`
+  ).join('');
+
+  const placeholder = s.level === 'county'
+    ? `county, state, value  -or-  fips, value\nKanawha, WV, 850\nWood County, West Virginia, 410\n54039, 1200\nLos Angeles, CA, 3800`
+    : `state, value  -or-  fips, value\nWest Virginia, 45\nCA, 88\n54, 12`;
+
+  div.innerHTML = `
+    <div class="series-header">
+      <div class="series-dot" style="background:${s.colorHigh};"></div>
+      <input class="series-name-input" value="${s.name}"
+             onchange="updateSeries(${s.id},'name',this.value)" />
+      <span class="series-count">${statusStr}</span>
+    </div>
+    <div class="series-body">
+      <div class="style-row">
+        <span class="style-label">LEVEL</span>
+        <select class="inline-select" onchange="updateSeriesAndRedraw(${s.id},'level',this.value)">${levelOpts}</select>
+      </div>
+      <div class="style-row">
+        <span class="style-label">SCALE</span>
+        <select class="inline-select" onchange="updateSeries(${s.id},'scaleType',this.value)">${scaleOpts}</select>
+      </div>
+      <div class="style-row">
+        <span class="style-label">SCHEME</span>
+        <select class="inline-select" onchange="schemeChange(${s.id},this.value)">${schemeOpts}</select>
+      </div>
+      <div id="custom-colors-${s.id}" style="display:${s.scheme==='custom'?'flex':'none'};flex-direction:column;gap:6px;">
+        <div class="style-row">
+          <span class="style-label">LOW</span>
+          <div class="color-input-wrap">
+            <input type="color" value="${s.colorLow}" id="clo-${s.id}"
+                   oninput="updateSeries(${s.id},'colorLow',this.value);document.getElementById('hlo-${s.id}').value=this.value;updateGradientPreview(${s.id})" />
+            <input class="hex-input" id="hlo-${s.id}" value="${s.colorLow}" maxlength="7"
+                   onchange="syncCustomColor(${s.id},'low',this.value)" />
+          </div>
+        </div>
+        <div class="style-row">
+          <span class="style-label">HIGH</span>
+          <div class="color-input-wrap">
+            <input type="color" value="${s.colorHigh}" id="chi-${s.id}"
+                   oninput="updateSeries(${s.id},'colorHigh',this.value);document.getElementById('hhi-${s.id}').value=this.value;updateGradientPreview(${s.id})" />
+            <input class="hex-input" id="hhi-${s.id}" value="${s.colorHigh}" maxlength="7"
+                   onchange="syncCustomColor(${s.id},'high',this.value)" />
+          </div>
+        </div>
+      </div>
+      <div class="style-row" id="grad-preview-row-${s.id}">
+        <span class="style-label">RAMP</span>
+        <div class="gradient-preview" id="gp-${s.id}" style="background:${gradientCSS(s)}"></div>
+      </div>
+      <div class="style-row">
+        <span class="style-label">RANGE</span>
+        <div class="range-row" style="flex:1">
+          <input type="number" id="dmin-${s.id}" placeholder="auto" value="${s.domainMin}"
+                 onchange="updateSeries(${s.id},'domainMin',this.value)" title="Domain min (blank=auto)" />
+          <span class="range-sep">—</span>
+          <input type="number" id="dmax-${s.id}" placeholder="auto" value="${s.domainMax}"
+                 onchange="updateSeries(${s.id},'domainMax',this.value)" title="Domain max (blank=auto)" />
+        </div>
+      </div>
+      <div class="style-row">
+        <span class="style-label">OPACITY</span>
+        <input type="range" class="size-slider" min="10" max="100" value="${Math.round(s.opacity*100)}"
+               oninput="updateSeries(${s.id},'opacity',this.value/100);this.nextElementSibling.textContent=this.value+'%'" style="flex:1;accent-color:var(--accent);cursor:pointer" />
+        <span class="size-val" style="min-width:32px;font-family:var(--font-mono);font-size:10px;color:var(--text-dim);text-align:right">${Math.round(s.opacity*100)}%</span>
+      </div>
+      <textarea class="data-input" placeholder="${placeholder}" onchange="updateSeries(${s.id},'dataRaw',this.value)">${s.dataRaw}</textarea>
+      <div class="zip-actions" style="display:flex;gap:5px;justify-content:space-between;align-items:center">
+        <div style="display:flex;gap:5px">
+          <button class="btn" style="padding:4px 9px;font-size:10px" onclick="toggleVisible(${s.id})">${s.visible?'HIDE':'SHOW'}</button>
+          <button class="btn danger" style="padding:4px 9px;font-size:10px" onclick="removeSeries(${s.id})">DEL</button>
+        </div>
+      </div>
+      <div class="data-status" id="ds-${s.id}">
+        ${total>0 ? `<span class="${ok===total?'ok':'err'}">${ok} matched, ${total-ok} failed</span>` : ''}
+      </div>
+    </div>
+  `;
+  return div;
+}
+
+function countEntries(raw) {
+  return raw.split('\n').map(l=>l.trim()).filter(l=>l.length>0 && l.includes(',')).length;
+}
+
+function schemeChange(id, val) {
+  const s = state.series.find(x=>x.id===id);
+  if (!s) return;
+  s.scheme = val;
+  const sc = COLOR_SCHEMES.find(c=>c.id===val);
+  if (sc && val !== 'custom') { s.colorLow = sc.low; s.colorHigh = sc.high; }
+  const customDiv = document.getElementById(`custom-colors-${id}`);
+  if (customDiv) customDiv.style.display = val==='custom' ? 'flex' : 'none';
+  updateGradientPreview(id);
+}
+
+function syncCustomColor(id, which, val) {
+  if (!/^#[0-9a-fA-F]{6}$/.test(val)) return;
+  const s = state.series.find(x=>x.id===id);
+  if (!s) return;
+  if (which==='low') {
+    s.colorLow = val;
+    const cp = document.getElementById(`clo-${id}`);
+    if (cp) cp.value = val;
+  } else {
+    s.colorHigh = val;
+    const cp = document.getElementById(`chi-${id}`);
+    if (cp) cp.value = val;
+  }
+  updateGradientPreview(id);
+}
+
+function updateGradientPreview(id) {
+  const s = state.series.find(x=>x.id===id);
+  if (!s) return;
+  const gp = document.getElementById(`gp-${id}`);
+  if (gp) gp.style.background = gradientCSS(s);
+  // update dot too
+  const dot = document.querySelector(`#sc-${id} .series-dot`);
+  if (dot) dot.style.background = s.colorHigh;
+}
+
+function toggleVisible(id) {
+  const s = state.series.find(x=>x.id===id);
+  if (s) { s.visible = !s.visible; renderSidebar(); renderChoropleth(); }
+}
+
+function updateSeries(id, key, val) {
+  const s = state.series.find(x=>x.id===id);
+  if (s) s[key] = val;
+}
+
+function updateSeriesAndRedraw(id, key, val) {
+  updateSeries(id, key, val);
+  renderSidebar(); // refresh placeholder text
+}
+
+// ─── DATA PARSING ─────────────────────────────────────────────────────────────
+// Each line format (flexible):  KEY = VALUE  or  KEY: VALUE  or  KEY, VALUE
+// KEY for state:  name ("West Virginia"), abbr ("WV"), FIPS number ("54")
+// KEY for county: 5-digit FIPS ("54001"), or "County Name, ST" ("Kanawha, WV")
+
+function parseDataRaw(raw, level) {
+  const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const results = [];
+
+  for (const line of lines) {
+    if (line.startsWith('#') || line.startsWith('//')) continue;
+
+    const tokens = line.split(',').map(t => t.trim());
+    if (tokens.length < 2) continue;
+
+    // Last token is always the value
+    const rawVal = tokens[tokens.length - 1].replace(/\s/g, '');
+    const value  = parseFloat(rawVal);
+    if (isNaN(value)) continue;
+
+    const keyTokens = tokens.slice(0, tokens.length - 1);
+    const key = keyTokens.join(', ');
+
+    let fips = null;
+
+    if (level === 'state') {
+      fips = resolveStateFips(keyTokens[0]);
+    } else {
+      if (keyTokens.length === 1) {
+        const k = keyTokens[0].trim();
+        if (/^\d{5}$/.test(k) && countyFipsMap.has(k)) fips = k;
+      } else {
+        // county = all tokens except last, state = last token
+        const stateStr  = keyTokens[keyTokens.length - 1];
+        const countyStr = keyTokens.slice(0, keyTokens.length - 1).join(', ');
+        fips = resolveCountyByParts(countyStr, stateStr);
+      }
+    }
+
+    results.push({ key, value, fips, ok: fips !== null });
+  }
+  return results;
+}
+
+function resolveStateFips(key) {
+  const k = key.trim();
+  // numeric FIPS
+  if (/^\d+$/.test(k)) {
+    const padded = k.padStart(2,'0');
+    return stateFipsMap.has(padded) ? padded : null;
+  }
+  // abbr (2 letters)
+  if (/^[A-Za-z]{2}$/.test(k)) {
+    return stateAbbrToFips.get(k.toUpperCase()) || null;
+  }
+  // full name
+  return stateNameToFips.get(k.toLowerCase()) || null;
+}
+
+function normalizeCountyName(n) {
+  return n.toLowerCase()
+    .replace(/\s+(county|parish|borough|census area|municipality|city and borough|unified government|metro government|city)$/i, '')
+    .replace(/\bst\.\s*/,'st ')
+    .replace(/\bst\b/,'st ')
+    .replace(/['.]/g,'')
+    .trim();
+}
+
+function countyMatchScore(raw, feat) {
+  // Returns true if raw county string matches feat
+  const norm = normalizeCountyName(raw);
+  const featName = normalizeCountyName(feat.properties.name || '');
+  return norm === featName || featName.startsWith(norm) || norm.startsWith(featName);
+}
+
+// resolveCountyByParts: explicit countyStr + stateStr, no comma-splitting ambiguity
+function resolveCountyByParts(countyStr, stateStr) {
+  const stateFips = resolveStateFips(stateStr.trim());
+  if (!stateFips) return null;
+
+  const input = countyStr.trim().toLowerCase();
+
+  // Exact match first
+  for (const [fips, feat] of countyFipsMap) {
+    if (!fips.startsWith(stateFips)) continue;
+    if ((feat.properties.name || '').toLowerCase() === input) return fips;
+  }
+
+  // Normalized match (strips County/Parish/Borough/etc.)
+  for (const [fips, feat] of countyFipsMap) {
+    if (!fips.startsWith(stateFips)) continue;
+    if (countyMatchScore(countyStr, feat)) return fips;
+  }
+
+  return null;
+}
+
+// Legacy single-string resolver (kept for any direct calls)
+function resolveCountyFips(key) {
+  const k = key.trim();
+  if (/^\d{5}$/.test(k)) return countyFipsMap.has(k) ? k : null;
+  // Expect "county, state" — last comma-token is the state
+  const parts = k.split(',').map(t => t.trim());
+  if (parts.length < 2) return null;
+  const stateStr  = parts[parts.length - 1];
+  const countyStr = parts.slice(0, parts.length - 1).join(', ');
+  return resolveCountyByParts(countyStr, stateStr);
+}
+
+// ─── PROJECTION CATALOG ──────────────────────────────────────────────────────
+const PROJECTIONS = [
+  { id:'albersUsa',       label:'Albers USA',          fn:()=>d3.geoAlbersUsa(),                                                             views:['us'] },
+  { id:'albers',          label:'Albers',               fn:()=>d3.geoAlbers(),                                                                views:['lower48'] },
+  { id:'conicConformal',  label:'Lambert Conformal',    fn:()=>d3.geoConicConformal().parallels([29.5,45.5]).rotate([96,0]),                   views:['lower48','world'] },
+  { id:'conicEquidist',   label:'Conic Equidistant',    fn:()=>d3.geoConicEquidistant().parallels([29.5,45.5]).rotate([96,0]),                 views:['lower48','world'] },
+  { id:'mercator',        label:'Mercator',             fn:()=>d3.geoMercator(),                                                              views:['lower48','world'] },
+  { id:'transverseMerc',  label:'Transverse Mercator',  fn:()=>d3.geoTransverseMercator(),                                                    views:['lower48','world'] },
+  { id:'equalEarth',      label:'Equal Earth',          fn:()=>d3.geoEqualEarth(),                                                            views:['lower48','world'] },
+  { id:'naturalEarth1',   label:'Natural Earth',        fn:()=>d3.geoNaturalEarth1(),                                                         views:['lower48','world'] },
+  { id:'azimuthalEqArea', label:'Azimuthal Equal-Area', fn:()=>d3.geoAzimuthalEqualArea(),                                                    views:['lower48','world'] },
+  { id:'orthographic',    label:'Orthographic',         fn:()=>d3.geoOrthographic(),                                                          views:['lower48','world'] },
+  { id:'stereographic',   label:'Stereographic',        fn:()=>d3.geoStereographic(),                                                         views:['lower48','world'] },
+  { id:'naturalEarth1',   label:'Natural Earth',        fn:()=>d3.geoNaturalEarth1(),                                                         views:['world'] },
+];
+const VIEW_DEFAULT_PROJ = { us:'albersUsa', lower48:'albers', world:'naturalEarth1' };
+
+// ─── MAP SETUP ────────────────────────────────────────────────────────────────
+const svg = d3.select('#map-svg');
+let projection, zoomBehavior, zoomG, mapG, choroplethG;
+let worldTopo2;
+
+function updateProjDropdown() {
+  const sel = document.getElementById('projSelect');
+  const wrap = document.getElementById('projWrap');
+  if (state.view === 'us') { state.projection = 'albersUsa'; wrap.style.display = 'none'; return; }
+  wrap.style.display = 'flex';
+  const available = [...new Map(PROJECTIONS.filter(p => p.views.includes(state.view)).map(p=>[p.id,p])).values()];
+  sel.innerHTML = available.map(p => `<option value="${p.id}"${p.id===state.projection?' selected':''}>${p.label}</option>`).join('');
+  if (!available.find(p=>p.id===state.projection)) {
+    state.projection = VIEW_DEFAULT_PROJ[state.view]; sel.value = state.projection;
+  }
+}
+
+function setProjection(id) { state.projection = id; if(usTopo) buildMap(); }
+
+function getProjectionFn() {
+  const p = [...new Map(PROJECTIONS.map(p=>[p.id,p])).values()].find(p=>p.id===state.projection);
+  return p ? p.fn() : d3.geoNaturalEarth1();
+}
+
+async function initMap() {
+  document.getElementById('loadingOverlay').classList.remove('hidden');
+  try {
+    [worldTopo2, usTopo] = await Promise.all([
+      fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json').then(r=>r.json()),
+      fetch('https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json').then(r=>r.json()),
+    ]);
+    buildLookups();
+    updateProjDropdown();
+    buildMap();
+    state.geoLoaded = true;
+  } catch(e) {
+    document.querySelector('.loading-text').textContent = 'ERROR LOADING GEO DATA';
+    console.error(e);
+  }
+  document.getElementById('loadingOverlay').classList.add('hidden');
+}
+
+// State FIPS + name/abbr lookup tables
+const STATE_ABBR = {
+  '01':'AL','02':'AK','04':'AZ','05':'AR','06':'CA','08':'CO','09':'CT','10':'DE',
+  '11':'DC','12':'FL','13':'GA','15':'HI','16':'ID','17':'IL','18':'IN','19':'IA',
+  '20':'KS','21':'KY','22':'LA','23':'ME','24':'MD','25':'MA','26':'MI','27':'MN',
+  '28':'MS','29':'MO','30':'MT','31':'NE','32':'NV','33':'NH','34':'NJ','35':'NM',
+  '36':'NY','37':'NC','38':'ND','39':'OH','40':'OK','41':'OR','42':'PA','44':'RI',
+  '45':'SC','46':'SD','47':'TN','48':'TX','49':'UT','50':'VT','51':'VA','53':'WA',
+  '54':'WV','55':'WI','56':'WY','72':'PR','78':'VI',
+};
+const STATE_NAMES = {
+  '01':'Alabama','02':'Alaska','04':'Arizona','05':'Arkansas','06':'California',
+  '08':'Colorado','09':'Connecticut','10':'Delaware','11':'District of Columbia',
+  '12':'Florida','13':'Georgia','15':'Hawaii','16':'Idaho','17':'Illinois',
+  '18':'Indiana','19':'Iowa','20':'Kansas','21':'Kentucky','22':'Louisiana',
+  '23':'Maine','24':'Maryland','25':'Massachusetts','26':'Michigan','27':'Minnesota',
+  '28':'Mississippi','29':'Missouri','30':'Montana','31':'Nebraska','32':'Nevada',
+  '33':'New Hampshire','34':'New Jersey','35':'New Mexico','36':'New York',
+  '37':'North Carolina','38':'North Dakota','39':'Ohio','40':'Oklahoma','41':'Oregon',
+  '42':'Pennsylvania','44':'Rhode Island','45':'South Carolina','46':'South Dakota',
+  '47':'Tennessee','48':'Texas','49':'Utah','50':'Vermont','51':'Virginia',
+  '53':'Washington','54':'West Virginia','55':'Wisconsin','56':'Wyoming',
+  '72':'Puerto Rico','78':'U.S. Virgin Islands',
+};
+
+function buildLookups() {
+  stateFeatures  = topojson.feature(usTopo, usTopo.objects.states).features;
+  countyFeatures = topojson.feature(usTopo, usTopo.objects.counties).features;
+
+  stateFeatures.forEach(f => {
+    const id = String(f.id).padStart(2,'0');
+    stateFipsMap.set(id, f);
+    const abbr = STATE_ABBR[id];
+    const name = STATE_NAMES[id];
+    if (abbr) stateAbbrToFips.set(abbr, id);
+    if (name) stateNameToFips.set(name.toLowerCase(), id);
+  });
+
+  countyFeatures.forEach(f => {
+    const id = String(f.id).padStart(5,'0');
+    countyFipsMap.set(id, f);
+  });
+}
+
+function buildMap() {
+  const svgEl = document.getElementById('map-svg');
+  const W = svgEl.clientWidth || 900, H = svgEl.clientHeight || 600;
+  const isWorld = state.view === 'world';
+  const oceanColor = isWorld ? '#2a3f52' : '#c8d8e8';
+
+  svg.selectAll('*').remove();
+
+  svg.append('rect').attr('class','ocean-rect')
+     .attr('width',W).attr('height',H)
+     .attr('fill',oceanColor).attr('opacity', state.showWater ? 1 : 0);
+
+  zoomG       = svg.append('g').attr('class','zoom-g');
+  mapG        = zoomG.append('g').attr('class','map-g');
+  choroplethG = zoomG.append('g').attr('class','choro-g');
+
+  let proj = getProjectionFn();
+
+  if (state.view === 'world') {
+    const sphere = {type:'Sphere'};
+    try { proj.fitSize([W,H], sphere); } catch(e) {
+      proj.fitSize([W*0.9,H*0.9], topojson.feature(worldTopo2, worldTopo2.objects.countries));
+      proj.translate([W/2,H/2]);
+    }
+    mapG.append('path').datum(sphere).attr('class','sphere-bg')
+        .attr('fill',oceanColor).attr('opacity', state.showWater ? 1 : 0)
+        .attr('d', d3.geoPath(proj));
+    const countries = topojson.feature(worldTopo2, worldTopo2.objects.countries).features;
+    mapG.selectAll('path.country').data(countries).enter().append('path').attr('class','country')
+        .attr('d',d3.geoPath(proj)).attr('fill','#EAEAEA').attr('stroke','#979797').attr('stroke-width',0.5);
+    const usStFeat = topojson.feature(usTopo, usTopo.objects.states).features;
+    mapG.selectAll('path.us-state').data(usStFeat).enter().append('path').attr('class','us-state')
+        .attr('d',d3.geoPath(proj)).attr('fill','#EAEAEA').attr('stroke','#979797').attr('stroke-width',0.3);
+
+  } else if (state.view === 'us') {
+    const pad = Math.min(W,H)*0.04;
+    proj.fitExtent([[pad,pad],[W-pad,H-pad]], topojson.feature(usTopo, usTopo.objects.states));
+    mapG.selectAll('path.state').data(stateFeatures).enter().append('path').attr('class','state')
+        .attr('d',d3.geoPath(proj)).attr('fill','#EAEAEA').attr('stroke','#979797').attr('stroke-width',0.7);
+
+  } else {
+    const stFeat = stateFeatures.filter(f => f.id !== '02' && f.id !== '15');
+    const fc = {type:'FeatureCollection', features: stFeat};
+    const pad = Math.min(W,H)*0.04;
+    const tempProj = proj.scale(1).translate([0,0]);
+    const [[x0,y0],[x1,y1]] = d3.geoPath(tempProj).bounds(fc);
+    const scale = Math.min((W-pad*2)/(x1-x0),(H-pad*2)/(y1-y0));
+    const tx = pad + ((W-pad*2)-scale*(x1-x0))/2 - scale*x0;
+    const ty = pad + ((H-pad*2)-scale*(y1-y0))/2 - scale*y0;
+    proj.scale(scale).translate([tx,ty]);
+    mapG.selectAll('path.state').data(stFeat).enter().append('path').attr('class','state')
+        .attr('d',d3.geoPath(proj)).attr('fill','#EAEAEA').attr('stroke','#979797').attr('stroke-width',0.7);
+  }
+
+  projection = proj;
+
+  zoomBehavior = d3.zoom().scaleExtent([0.5,200])
+    .on('zoom', event => zoomG.attr('transform', event.transform));
+  svg.call(zoomBehavior);
+  svg.on('dblclick.zoom', null);
+
+  renderChoropleth();
+  const projLabel = [...new Map(PROJECTIONS.map(p=>[p.id,p])).values()].find(p=>p.id===state.projection)?.label || state.projection;
+  document.getElementById('mapStatus').textContent =
+    `${state.view.toUpperCase()} · ${projLabel.toUpperCase()} · scroll/drag to navigate`;
+}
+
+// ─── CHOROPLETH RENDER ───────────────────────────────────────────────────────
+function buildColorScale(s, values) {
+  const vmin = s.domainMin !== '' ? parseFloat(s.domainMin) : d3.min(values);
+  const vmax = s.domainMax !== '' ? parseFloat(s.domainMax) : d3.max(values);
+
+  // Choose interpolator
+  let interp;
+  if (D3_INTERPOLATORS[s.scheme]) {
+    interp = D3_INTERPOLATORS[s.scheme];
+  } else {
+    interp = d3.interpolateRgb(s.colorLow, s.colorHigh);
+  }
+
+  if (s.scaleType === 'quantile') {
+    return d3.scaleQuantile().domain(values).range(d3.quantize(interp, 7));
+  }
+  if (s.scaleType === 'quantize') {
+    return d3.scaleQuantize().domain([vmin, vmax]).range(d3.quantize(interp, 7));
+  }
+  // linear
+  return d3.scaleSequential(interp).domain([vmin, vmax]);
+}
+
+function renderChoropleth() {
+  if (!projection || !choroplethG) return;
+  choroplethG.selectAll('*').remove();
+
+  const tooltip = document.getElementById('tooltip');
+  const pathFn  = d3.geoPath(projection);
+
+  state.series.filter(s => s.visible && s.parsed.length > 0).forEach(s => {
+    const validParsed = s.parsed.filter(r => r.ok);
+    if (!validParsed.length) return;
+
+    const valueMap = new Map(validParsed.map(r => [r.fips, r.value]));
+    const values   = validParsed.map(r => r.value);
+    const scale    = buildColorScale(s, values);
+
+    const features = s.level === 'county' ? countyFeatures : stateFeatures;
+
+    choroplethG.selectAll(`path.choro-${s.id}`)
+      .data(features.filter(f => valueMap.has(String(f.id).padStart(s.level==='county'?5:2,'0'))))
+      .enter().append('path')
+      .attr('class', `choro-${s.id}`)
+      .attr('d', pathFn)
+      .attr('fill', f => {
+        const fips = String(f.id).padStart(s.level==='county'?5:2,'0');
+        return scale(valueMap.get(fips));
+      })
+      .attr('opacity', s.opacity)
+      .attr('stroke', 'rgba(0,0,0,0.12)')
+      .attr('stroke-width', 0.4)
+      .style('cursor','pointer')
+      .on('mouseover', function(event, f) {
+        const fips = String(f.id).padStart(s.level==='county'?5:2,'0');
+        const val  = valueMap.get(fips);
+        const name = s.level==='county'
+          ? (f.properties?.name || fips)
+          : (STATE_NAMES[fips] || fips);
+        tooltip.style.display = 'block';
+        tooltip.innerHTML = `<span style="color:${scale(val)};text-shadow:0 0 3px rgba(0,0,0,0.5)">${s.name}</span> · ${name} · <b>${val !== undefined ? val.toLocaleString() : '—'}</b>`;
+        d3.select(this).attr('opacity', Math.min(1, s.opacity + 0.1)).attr('stroke','rgba(255,255,255,0.5)').attr('stroke-width',1.2);
+      })
+      .on('mousemove', function(event) {
+        tooltip.style.left = (event.clientX + 14) + 'px';
+        tooltip.style.top  = (event.clientY - 8)  + 'px';
+      })
+      .on('mouseout', function() {
+        tooltip.style.display = 'none';
+        d3.select(this).attr('opacity', s.opacity).attr('stroke','rgba(0,0,0,0.12)').attr('stroke-width',0.4);
+      });
+  });
+
+  renderLegend();
+}
+
+// ─── PLOT ALL ─────────────────────────────────────────────────────────────────
+function plotAll() {
+  if (!state.geoLoaded) { alert('Geo data still loading…'); return; }
+
+  state.series.forEach(s => {
+    s.parsed = parseDataRaw(s.dataRaw, s.level);
+    const ok = s.parsed.filter(r=>r.ok).length;
+    const total = s.parsed.length;
+    const ds = document.getElementById(`ds-${s.id}`);
+    if (ds) ds.innerHTML = total > 0
+      ? `<span class="${ok===total?'ok':'err'}">${ok} matched, ${total-ok} failed</span>`
+      : '';
+  });
+
+  renderSidebar();
+  renderChoropleth();
+}
+
+// ─── VIEW / PROJECTION ────────────────────────────────────────────────────────
+function setView(v) {
+  state.view = v;
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.dataset.view===v));
+  state.projection = VIEW_DEFAULT_PROJ[v];
+  updateProjDropdown();
+  if (usTopo) buildMap();
+}
+
+function setWater(on) {
+  state.showWater = on;
+  svg.select('rect.ocean-rect').attr('opacity', on ? 1 : 0);
+  svg.select('path.sphere-bg').attr('opacity', on ? 1 : 0);
+}
+
+function resetZoom() {
+  if (zoomBehavior) svg.transition().duration(400).call(zoomBehavior.transform, d3.zoomIdentity);
+}
+
+// ─── LEGEND ───────────────────────────────────────────────────────────────────
+function toggleLegend(on) {
+  const el = document.getElementById('legendOverlay');
+  if (on) { el.classList.remove('hidden'); renderLegend(); }
+  else el.classList.add('hidden');
+}
+
+function renderLegend() {
+  const el = document.getElementById('legendOverlay');
+  if (!document.getElementById('legendCheck').checked) return;
+
+  const visible = state.series.filter(s => s.visible && s.parsed.some(r=>r.ok));
+  if (!visible.length) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+
+  el.innerHTML = `<div class="legend-title">LEGEND</div>` +
+    visible.map(s => {
+      const vals = s.parsed.filter(r=>r.ok).map(r=>r.value);
+      const vmin = s.domainMin !== '' ? parseFloat(s.domainMin) : d3.min(vals);
+      const vmax = s.domainMax !== '' ? parseFloat(s.domainMax) : d3.max(vals);
+
+      let gradCss;
+      if (D3_INTERPOLATORS[s.scheme]) {
+        const stops = d3.range(0,1.01,0.1).map(t => D3_INTERPOLATORS[s.scheme](t)).join(', ');
+        gradCss = `linear-gradient(to right, ${stops})`;
+      } else {
+        gradCss = `linear-gradient(to right, ${s.colorLow}, ${s.colorHigh})`;
+      }
+
+      const fmt = v => v !== undefined ? (Math.abs(v)>=1000 ? d3.format('.3s')(v) : d3.format('.3~g')(v)) : '';
+
+      return `
+        <div class="legend-series-block">
+          <div class="legend-series-name">${s.name} <span style="opacity:0.5;font-size:9px">(${s.level})</span></div>
+          <div class="legend-bar-wrap">
+            <div class="legend-bar" style="background:${gradCss}"></div>
+          </div>
+          <div class="legend-labels"><span>${fmt(vmin)}</span><span>${fmt(vmax)}</span></div>
+        </div>`;
+    }).join('');
+}
+
+// ─── EXPORT PNG ───────────────────────────────────────────────────────────────
+async function exportPNG() {
+  const svgEl = document.getElementById('map-svg');
+  const W = svgEl.clientWidth, H = svgEl.clientHeight;
+  const shortSide = Math.min(W,H);
+  const scale = 2000/shortSide;
+  const outW = Math.round(W*scale), outH = Math.round(H*scale);
+
+  const svgClone = svgEl.cloneNode(true);
+  svgClone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+  svgClone.setAttribute('width',outW); svgClone.setAttribute('height',outH);
+  svgClone.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  if (!state.showWater) {
+    const r = svgClone.querySelector('rect.ocean-rect');
+    if (r) r.setAttribute('opacity','0');
+    const sp = svgClone.querySelector('path.sphere-bg');
+    if (sp) sp.setAttribute('opacity','0');
+  }
+
+  const svgStr = new XMLSerializer().serializeToString(svgClone);
+  const url    = URL.createObjectURL(new Blob([svgStr],{type:'image/svg+xml;charset=utf-8'}));
+  const img    = new Image();
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = outW; canvas.height = outH;
+    const ctx = canvas.getContext('2d');
+    if (state.showWater) {
+      ctx.fillStyle = state.view==='world' ? '#2a3f52' : '#c8d8e8';
+      ctx.fillRect(0,0,outW,outH);
+    }
+    ctx.drawImage(img,0,0,outW,outH);
+    URL.revokeObjectURL(url);
+    canvas.toBlob(b => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(b);
+      a.download = `choromap_${state.view}_${Date.now()}.png`;
+      a.click();
+    },'image/png');
+  };
+  img.src = url;
+}
+
+// ─── THEME ────────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.documentElement.setAttribute('data-theme', isDark ? '' : 'dark');
+  document.getElementById('themeToggle').textContent = isDark ? '◑' : '◐';
+}
+
+// ─── RESIZE ───────────────────────────────────────────────────────────────────
+let resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => { if(usTopo) buildMap(); }, 150);
+});
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+addSeries();
+initMap();
+</script>
+</body>
+</html>
